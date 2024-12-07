@@ -113,3 +113,190 @@ push 'C'
 0x8000  |   | <- sp, bp
 
 ```
+
+### Bootsector Strings and Functions
+#### Strings
+```asm
+mystring:
+  db 'Hello, World', 0
+```
+- terminate with null-byte
+- surrounded with quotes -> convert to ASCII
+
+#### Control
+cmp
+- Compare
+- `cmp operand1, operand2`
+- Updates the flags
+  - ZF: Zero Flag, if result is zero
+  - SF: Sign Flag, if result is negative
+  - CF: Carry Flag, if there's an unsigned underflow
+
+je
+- Jump if Equal
+- `je label`
+
+```asm
+cmp ax, bx
+je match
+; Code here runs if not equal
+```
+
+jmp
+- Unconditional Jump
+- `jmp label`
+- Program flow jumps to label immediately
+
+Exmaple
+```asm
+cmp ax, 4      ; if ax = 4
+je ax_is_four  ; do something (by jumping to that label)
+jmp else       ; else, do another thing
+jmp endif      ; finally, resume the normal flow
+
+ax_is_four:
+    .....
+    jmp endif
+
+else:
+    .....
+    jmp endif  ; not actually necessary but printed here for completeness
+
+endif:
+```
+#### Functions
+Paramter handling
+- developer knows a specific register or memory address to lookup
+- make func calls generic
+
+Example:
+```asm
+mov al, 'X'
+jmp print
+endprint:
+
+...
+
+print:
+    mov ah, 0x0e  ; tty code
+    int 0x10      ; I assume that 'al' already has the character
+    jmp endprint  ; this label is also pre-agreed
+```
+Improvements
+- store the return address
+  - CPU can help us, use `call` and `ret` instead of `jmp`s
+- save the current registers to allow sub funcs to modify
+  - `pusha` and `popa`, Push All and Pop All **general-purpose registers** onto the stack.
+
+#### Include ext files
+```asm
+%include "file.asm"
+```
+#### Print Hex
+```
+; assume input is 0x1234 stored at dx
+
+; 1. convert the last char of 'dx' to ascii
+mov ax, dx
+and ax, 0x000f   ; 0b0000000000001111 & 0b0001001000110100 -> 0b0000000000000100
+                 ; 0x000f & 0x1234 -> 0x0004
+                 ; mask first three
+add al, 0x30     ; Numeric ASCII values for '0' is 0x30
+                 ; add 0x30 to N (here 4) to convert it to ASCII "N"
+com al, 0x39     ; if > 9, add extra 7 to represent 'A' to 'F'
+jle step2        ; if < 9, goto step 2
+add al, 7        ; 'A' in ASCII is 65 instead of 58, so add 7, 
+                 ; Dec Hx Chr
+                 ; 57  39   9
+                 ; 58  3A   :
+                 ; 65  41   A
+
+; 2. get correct position for string to place ASCII char
+; bx <- base address + string_length - index of current char
+step 2:
+  mov bx, HEX_OUT + 5  ; base + length
+  sub bx, cx           ; base + length - index of current char, cx 0->1->2->3
+                       ; --------------
+                       ; 0x8000  | '0' | <- base address
+                       ; 0x8001  | 'x' | 
+                       ; 0x8002  | '1' | <- base address + 5 - 3
+                       ; 0x8003  | '2' | <- base address + 5 - 2
+                       ; 0x8004  | '3' | <- base address + 5 - 1
+                       ; 0x8005  | '4' | <- base address + 5 - 0
+                       ; 0x8006  |NULL |
+
+  mov [bx], al         ; copy the ASCII char on 'al' to position pointed by 'bx'
+  ror dx, 4            ; 0x1234 -> 0x4123 -> 0x3412 -> 0x2341 -> 0x1234
+
+  ; increment index and loop
+  add cx, 1
+  jmp hex_loop
+
+end:
+  mov bx, HEX_OUT
+  call print
+
+  popa
+  ret
+
+
+HEX_OUT:
+  db '0x0000', 0 ; reserve memory for new string
+                       ; --------------
+                       ; 0x8000  | '0' | <- base address
+                       ; 0x8001  | 'x' | 
+                       ; 0x8002  | '0' | <- base address + 5 - 3
+                       ; 0x8003  | '0' | <- base address + 5 - 2
+                       ; 0x8004  | '0' | <- base address + 5 - 1
+                       ; 0x8005  | '0' | <- base address + 5 - 0
+                       ; 0x8006  |NULL |
+
+
+```
+
+### Bootsector Segmentation
+- Segmentation means specify an offset to all data
+```
+cs: Code Segmentation
+ds: Data
+ss: Stack
+es: Extra
+fs: General Purpose
+gs: General Purpose
+```
+- Overlap segment and address to compute real address
+`segment << 4 + address`
+- cannot use `mov` directly, need to use a general purpose register
+
+
+### Bootsector Disk
+- OS wont fit inside the bootsector 512 bytes
+- Need to reaad data from disk to run the kernel
+
+carry bit
+- extra bit present on each register which stores when an operation has overflowed its current capacity
+
+```asm
+mov ax, 0xFFFF
+add ax, 1  ; ax = 0x0000 and carry = 1
+```
+
+#### int 0x13 functions
+- `INT 0x13` interrupt is a BIOS interrupt for low-level disk services.
+- set the `AH` register to a function number **before** invoking the interrupt.
+
+```
+0x00	Reset the disk system.
+0x01	Retrieve the disk status after an operation.
+0x02	Read sectors from the disk.
+0x03	Write sectors to the disk.
+0x04	Verify sectors (check for read errors).
+0x05	Format a track on a floppy disk.
+0x08	Retrieve disk parameters (e.g., number of sectors, heads, and cylinders).
+0x0C	Seek to a specific track.
+0x41	Check for the presence of enhanced disk services (EDDS).
+0x42	Extended read sectors (supports 32-bit addressing for large disks).
+0x43	Extended write sectors (supports 32-bit addressing for large disks).
+0x44	Verify sectors using extended disk services.
+0x48	Get drive parameters (geometry and capabilities) using extended disk services.
+```
