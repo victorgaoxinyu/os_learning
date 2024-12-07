@@ -15,12 +15,14 @@ disk_load:
   mov ch, 0x00 ; ch <- cylinder (0x0 .. 0x3FF, upper 2 bits in 'cl')              |
                ; dl <- drive number.                                              |
                ; (0 = floppy, 1 = floppy2, 0x80 = hdd, 0x82 = hdd2)               |
-  ; [es;bx] <- pointer to buffer where the data will be stored                    |
+  mov dh, 0x00 ; dh <- head number (0x0 .. 0xF)                                   |
+
+  ; [es:bx] <- pointer to buffer where the data will be stored                    |
   ;                                                                               |
   int 0x13      ; BIOS interrupt                                                  |
   jc disk_error ; Jump if Carry for error handling.                               |
-                                                                                  | 
-  pop dx                                                                          |
+
+  pop dx        ;                                                                 |
   cmp al, dh    ; BIOS also sets 'al' to the # of sectors read. Compare it.  -----|
   jne sectors_error ; Jump Not Equal
 
@@ -28,7 +30,7 @@ disk_load:
   ret
 
 disk_error:
-  move bx, DISK_ERROR
+  mov bx, DISK_ERROR
   call print
   call print_nl
   mov dh, ah     ; ah = error code, dl = disk drive that dropped the error
