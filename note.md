@@ -300,3 +300,19 @@ add ax, 1  ; ax = 0x0000 and carry = 1
 0x44	Verify sectors using extended disk services.
 0x48	Get drive parameters (geometry and capabilities) using extended disk services.
 ```
+
+### 32-bit protected mode
+New string print routine!
+- no BIOS interrupts
+- play with VGA video memory which starts at 0xb8000
+- access specific char on 80x25 grid
+  - `0xb8000 + 2 * (row * 80 + col)
+
+### Enter 32-bit protected mode
+- Disable interrupts
+- Load GDT
+- Set a bit on the CPU control register cr0
+- Flush CPU pipeline by issuing a carefully crafted far jump
+- Update all segment registers
+- Update the stack
+- Call to a well-known label which contains the first useful code in 32 bits
